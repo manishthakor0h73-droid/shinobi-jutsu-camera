@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#080916">
+<title>Shinobi Jutsu Camera</title>
+<style>
+:root{--cyan:#47eaff;--red:#ff365f;--gold:#ffd65a}
+*{box-sizing:border-box} body{margin:0;background:#080916;color:#f5f7ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:15px 16px 10px;background:linear-gradient(135deg,#11172e,#210f36);border-bottom:1px solid #34375c}
+h1{font-size:21px;margin:0;letter-spacing:.5px} header p{margin:5px 0 0;color:#aeb8d8;font-size:12px}
+main{max-width:850px;margin:auto;padding:12px}
+.stage{position:relative;width:100%;aspect-ratio:3/4;max-height:72vh;background:#111426;border:1px solid #3a4269;border-radius:18px;overflow:hidden}
+video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:cover;transform:scaleX(-1)}
+#fx{pointer-events:none} .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:linear-gradient(transparent,#050713a8);z-index:3}
+.overlay.hidden{display:none}.overlay button{display:block;margin:14px auto 0;background:var(--cyan);color:#08101c;font-weight:800;border:0;border-radius:999px;padding:13px 22px;font-size:15px}
+.hud{position:absolute;z-index:4;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.pill{font-size:11px;padding:7px 10px;border:1px solid #ffffff38;border-radius:99px;background:#080916b8;backdrop-filter:blur(8px)}
+#status{color:var(--cyan)} .bottomhud{position:absolute;z-index:4;bottom:12px;left:12px;right:12px;text-align:center;text-shadow:0 2px 10px #000}
+#jutsuName{font-size:clamp(24px,6vw,40px);font-weight:950;letter-spacing:1px;color:white;text-shadow:0 0 18px var(--cyan),0 3px 8px #000}
+#hint{font-size:12px;color:#e5e8ff;margin-top:4px}
+.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+button{font:inherit;cursor:pointer}.jutsu{border:1px solid #343b60;border-radius:12px;background:#13182c;color:#f6f7ff;padding:12px 8px;text-align:left;min-height:58px}
+.jutsu b{display:block;font-size:13px}.jutsu small{display:block;color:#aab4d4;font-size:10px;margin-top:3px}
+.jutsu.active{border-color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan);background:#11263a}
+.actions{display:flex;gap:8px;margin-top:9px}.actions button{flex:1;border:1px solid #343b60;border-radius:12px;background:#202640;color:white;padding:12px;font-weight:700}
+#startBtn{background:#47eaff;color:#07111d;border:0} .note{color:#9da8c9;font-size:11px;line-height:1.5;padding:12px 2px}
+#flash{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:0;background:white}.flash{animation:flash .32s ease-out}@keyframes flash{0%{opacity:.8}100%{opacity:0}}
+@media(min-width:700px){.controls{grid-template-columns:repeat(3,minmax(0,1fr))}.stage{aspect-ratio:4/3;max-height:70vh}}
+</style>
+</head>
+<body>
+<header><h1>🍥 SHINOBI JUTSU CAMERA</h1><p>Live hand tracking • Anime chakra effects • Mobile-friendly demo</p></header>
+<main>
+  <div class="stage" id="stage">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="fx"></canvas><div id="flash"></div>
+    <div class="hud"><span class="pill" id="status">CAMERA OFF</span><span class="pill" id="hands">Hands: 0</span></div>
+    <div class="overlay" id="overlay"><div><div style="font-size:48px">忍</div><b>Ready to awaken your chakra?</b><p style="font-size:12px;color:#c4c9e3">Allow camera access, then show your hands.</p><button id="enable">ENABLE CAMERA</button></div></div>
+    <div class="bottomhud"><div id="jutsuName">RASENGAN</div><div id="hint">Open palm toward camera to charge chakra</div></div>
+  </div>
+  <div class="controls" id="controls">
+    <button class="jutsu active" data-jutsu="rasengan"><b>🌀 Rasengan</b><small>Open palm → blue chakra orb</small></button>
+    <button class="jutsu" data-jutsu="chidori"><b>⚡ Chidori</b><small>Make a fist → lightning effect</small></button>
+    <button class="jutsu" data-jutsu="clone"><b>👥 Shadow Clones</b><small>Show both hands → clone burst</small></button>
+    <button class="jutsu" data-jutsu="sharingan"><b>🔴 Sharingan</b><small>Tap activate for eye aura overlay</small></button>
+    <button class="jutsu" data-jutsu="kurama"><b>🦊 Kurama Chakra</b><small>Open palm → golden aura</small></button>
+    <button class="jutsu" data-jutsu="amaterasu"><b>🔥 Amaterasu</b><small>Make a fist → dark flame effect</small></button>
+  </div>
+  <div class="actions"><button id="startBtn">START / RESUME</button><button id="toggleFx">Effects: ON</button><button id="fullscreen">FULL SCREEN</button></div>
+  <div class="note"><b>Gesture guide:</b> Keep your hand inside the camera frame. An open palm activates Rasengan/Kurama; a closed fist activates Chidori/Amaterasu; two visible hands trigger Shadow Clone energy. Other effects can be activated by selecting them. This is a visual AR-style fan demo—not real powers. Camera video is processed in your browser; this page does not upload or record it. Allow camera access and use an HTTPS-hosted page for best compatibility.</div>
+</main>
+<script type="module">
+import {FilesetResolver, HandLandmarker} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const video=document.querySelector('#video'), canvas=document.querySelector('#fx'), ctx=canvas.getContext('2d');
+const overlay=document.querySelector('#overlay'), status=document.querySelector('#status'), handsLabel=document.querySelector('#hands');
+const nameEl=document.querySelector('#jutsuName'), hintEl=document.querySelector('#hint'), flash=document.querySelector('#flash');
+let landmarker=null, stream=null, running=false, effects=true, selected='rasengan', lastVideoTime=-1, lastGesture='', gestureSince=0, lastBurst=0, pulse=0, landmarks=[];
+const info={
+ rasengan:['RASENGAN','Open palm toward camera to charge chakra','Open palm → blue chakra orb'],
+ chidori:['CHIDORI','Make a closed fist to summon lightning','Fist → lightning'],
+ clone:['SHADOW CLONE JUTSU','Show both hands for a clone energy burst','Two hands → clone burst'],
+ sharingan:['SHARINGAN','Sharingan visual aura enabled','Tap the button to switch effects'],
+ kurama:['KURAMA CHAKRA MODE','Open palm to ignite golden chakra','Open palm → golden aura'],
+ amaterasu:['AMATERASU','Make a fist to ignite dark flames','Fist → black flame aura']
+};
+document.querySelectorAll('.jutsu').forEach(btn=>btn.addEventListener('click',()=>selectJutsu(btn.dataset.jutsu)));
+function selectJutsu(j){selected=j;document.querySelectorAll('.jutsu').forEach(b=>b.classList.toggle('active',b.dataset.jutsu===j));nameEl.textContent=info[j][0];hintEl.textContent=info[j][1];}
+function resize(){const r=canvas.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0);}
+new ResizeObserver(resize).observe(canvas);resize();
+async function startCamera(){
+ try{
+  status.textContent='LOADING AI…';
+  if(!landmarker){const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');landmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2});}
+  if(!stream){stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}}});video.srcObject=stream;}
+  await video.play();overlay.classList.add('hidden');running=true;status.textContent='TRACKING';requestAnimationFrame(loop);
+ }catch(e){status.textContent='CAMERA ERROR';overlay.classList.remove('hidden');overlay.querySelector('b').textContent='Camera could not start';overlay.querySelector('p').textContent='Allow camera permission, check your internet connection, and open this page over HTTPS. '+(e.message||'');}
+}
+document.querySelector('#enable').addEventListener('click',startCamera);document.querySelector('#startBtn').addEventListener('click',startCamera);
+document.querySelector('#toggleFx').addEventListener('click',e=>{effects=!effects;e.currentTarget.textContent='Effects: '+(effects?'ON':'OFF');if(!effects)ctx.clearRect(0,0,canvas.width,canvas.height);});
+document.querySelector('#fullscreen').addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.querySelector('#stage').requestFullscreen();else await document.exitFullscreen();}catch{}});
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function isOpen(l){return [8,12,16,20].filter((tip,i)=>dist(l[tip],l[tip-2])>dist(l[tip-1],l[tip-2])*1.15).length>=3;}
+function point(l){return {x:(1-l[9].x)*canvas.clientWidth,y:l[9].y*canvas.clientHeight};}
+function activateGesture(hands){
+ let g='none';
+ if(hands.length>=2)g='clone';
+ else if(hands.length===1){const open=isOpen(hands[0]);g=open?'open':'fist';}
+ handsLabel.textContent='Hands: '+hands.length;
+ if(g!==lastGesture){lastGesture=g;gestureSince=performance.now();}
+ if(performance.now()-gestureSince>180){
+  if(g==='clone' && selected==='clone') {if(performance.now()-lastBurst>1800){lastBurst=performance.now();burst();}}
+  else if(g==='open' && ['rasengan','kurama'].includes(selected)) pulse=Math.min(1,pulse+.035);
+  else if(g==='fist' && ['chidori','amaterasu'].includes(selected)) pulse=Math.min(1,pulse+.055);
+  else pulse=Math.max(0,pulse-.018);
+ }
+}
+function glow(x,y,r,color){const grad=ctx.createRadialGradient(x,y,2,x,y,r);grad.addColorStop(0,color);grad.addColorStop(.28,color.replace(/[\d.]+\)$/,'0.35)'));grad.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=grad;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();}
+function orb(x,y,r,color){glow(x,y,r*2.3,color);for(let i=0;i<3;i++){ctx.beginPath();ctx.ellipse(x,y,r*(.8+i*.17),r*(.45+i*.16),performance.now()/250+i,0,Math.PI*2);ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();}for(let i=0;i<16;i++){let a=i*Math.PI/8+performance.now()/500,rr=r*(.55+Math.sin(performance.now()/100+i)*.15);ctx.beginPath();ctx.moveTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);ctx.lineTo(x+Math.cos(a)*(rr+10+Math.random()*14),y+Math.sin(a)*(rr+10+Math.random()*14));ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();}}
+function lightning(x,y,r,color){glow(x,y,r*2.3,color);for(let k=0;k<9;k++){let a=Math.random()*Math.PI*2;ctx.beginPath();ctx.moveTo(x,y);let px=x,py=y;for(let j=0;j<4;j++){px+=Math.cos(a+(Math.random()-.5)*1.1)*r*.55;py+=Math.sin(a+(Math.random()-.5)*1.1)*r*.55;ctx.lineTo(px,py);}ctx.strokeStyle=color;ctx.lineWidth=1+Math.random()*2;ctx.shadowBlur=12;ctx.shadowColor=color;ctx.stroke();ctx.shadowBlur=0;}}
+function burst(){flash.classList.remove('flash');void flash.offsetWidth;flash.classList.add('flash');}
+function loop(now){
+ if(!running)return;
+ if(video.readyState>=2 && video.currentTime!==lastVideoTime){
+  lastVideoTime=video.currentTime;
+  try{const result=landmarker.detectForVideo(video,now);landmarks=result.landmarks||[];activateGesture(landmarks);}catch{}
+ }
+ const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);
+ if(effects){
+  if(selected==='sharingan'){ctx.fillStyle='rgba(255,0,50,.12)';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#ff315b';ctx.lineWidth=3;ctx.beginPath();ctx.arc(w*.38,h*.28,Math.min(w,h)*.07,0,Math.PI*2);ctx.arc(w*.62,h*.28,Math.min(w,h)*.07,0,Math.PI*2);ctx.stroke();}
+  if(selected==='clone'&&landmarks.length>=2){for(let i=0;i<3;i++){ctx.strokeStyle=`rgba(100,220,255,${.4-i*.1})`;ctx.lineWidth=3;ctx.strokeRect(w*.16-i*7,h*.12+i*5,w*.68,h*.72);}}
+  landmarks.forEach(l=>{const p=point(l),r=Math.min(w,h)*(.055+.04*pulse);
+   if(selected==='rasengan'&&isOpen(l))orb(p.x,p.y,r,'rgba(65,220,255,.95)');
+   if(selected==='kurama'&&isOpen(l)){glow(p.x,p.y,r*3,'rgba(255,174,35,.7)');for(let i=0;i<7;i++){let a=now/350+i*6.28/7;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.quadraticCurveTo(p.x+Math.cos(a)*r*1.7,p.y+Math.sin(a)*r*1.7,p.x+Math.cos(a+.3)*r*2.5,p.y+Math.sin(a+.3)*r*2.5);ctx.strokeStyle='#ffbe45';ctx.lineWidth=4;ctx.stroke();}}
+   if(selected==='chidori'&&!isOpen(l))lightning(p.x,p.y,r,'rgba(75,150,255,.98)');
+   if(selected==='amaterasu'&&!isOpen(l)){for(let i=0;i<8;i++){let a=now/400+i*.8;glow(p.x+Math.cos(a)*r,p.y+Math.sin(a)*r,r*.65,'rgba(12,10,30,.95)');}}
+  });
+ }
+ requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
